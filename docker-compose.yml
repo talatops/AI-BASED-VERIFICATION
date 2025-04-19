@@ -2,35 +2,53 @@ version: '3.8'
 
 services:
   backend:
-    build:
-      context: ./backend
-      dockerfile: Dockerfile
+    build: ./backend
     ports:
       - "8000:8000"
-    depends_on:
-      - db
-      - ganache
+    volumes:
+      - ./backend:/app
     environment:
-      - DB_HOST=db
+      - DB_HOST=database
       - DB_PORT=5432
       - DB_USER=postgres
       - DB_PASSWORD=postgres
       - DB_NAME=identity_db
       - BLOCKCHAIN_PROVIDER=http://ganache:8545
+      - USE_MONGODB=true
+      - MONGODB_URL=mongodb://mongodb:27017/
+      - MONGODB_DB_NAME=identity_verification
+    depends_on:
+      - database
+      - ganache
+      - mongodb
     networks:
       - app-network
-    volumes:
-      - ./backend:/app
     restart: unless-stopped
 
-  db:
-    image: postgres:13
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
     environment:
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_USER=postgres
-      - POSTGRES_DB=identity_db
+      - NODE_ENV=production
+      - REACT_APP_API_URL=http://localhost:8000
+      - WDS_SOCKET_PORT=3000
+    networks:
+      - app-network
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  database:
+    image: postgres:15
     ports:
       - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=identity_db
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
@@ -38,20 +56,37 @@ services:
     restart: unless-stopped
 
   ganache:
-    image: trufflesuite/ganache:latest
+    image: trufflesuite/ganache-cli:latest
     ports:
       - "8545:8545"
-    command: --deterministic --networkId 1337 --chain.vmErrorsOnRPCResponse true
+    command: >
+      --deterministic
+      --mnemonic "candy maple cake sugar pudding cream honey rich smooth crumble sweet treat"
+      --accounts 10
+      --networkId 1337
+      --chainId 1337
+      --debug
     networks:
       - app-network
-    volumes:
-      - ganache_data:/data
     restart: unless-stopped
 
-volumes:
-  postgres_data:
-  ganache_data:
+  mongodb:
+    image: mongo:6.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    environment:
+      - MONGO_INITDB_DATABASE=identity_verification
+    command: mongod --quiet --logpath /dev/null
+    networks:
+      - app-network
+    restart: unless-stopped
 
 networks:
   app-network:
-    driver: bridge 
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongodb_data: 
